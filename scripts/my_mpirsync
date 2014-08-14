@@ -1,0 +1,14 @@
+#!/bin/bash
+
+src_path=$(hostname):$PWD
+dest_path=$PWD
+mpiexec.openmpi -hostfile ~/machines -nolocal -pernode mkdir -p $dest_path
+
+if [$# -eq 0]
+then mpiexec.openmpi -hostfile ~/machines -nolocal -pernode rsync -e 'ssh -o StrictHostKeyChecking=no -i /home/jimmy/.ssh/id_rsa' -avz --exclude '*.make' --exclude '*.cmake' --exclude '*.internal' --exclude '*.includecache' --exclude '*.o' $src_path/ $dest_path
+else
+    for var in $*
+    do
+        mpiexec.openmpi -hostfile ~/machines -nolocal -pernode rsync -e 'ssh -o StrictHostKeyChecking=no -i /home/jimmy/.ssh/id_rsa' -avz --exclude '*.make' --exclude '*.cmake' --exclude '*.internal' --exclude '*.includecache' --exclude '*.o' $src_path/${var} $dest_path
+    done
+fi

@@ -19,8 +19,19 @@ bool line_parser(graph_type& graph, const std::string& filename,
     return true;
 }
 
-class kNN_program : public graphlab::ivertex_program<graph_type, GatherType, MessageType>, public graphlab::IS_POD_TYPE {
+class kNN_program : 
+    public graphlab::ivertex_program<graph_type, gather_type, message_type>,
+    public graphlab::IS_POD_TYPE {
+private:
+    message_type msg;
 public:
+    void init(icontext_type & context, const vertex_type & vertex, const message_type & msg) {
+        this->msg = msg;
+    }
+
+    gather_type gather(icontext_type& context, const vertex_type& vertex, edge_type& edge) const { 
+        
+    }
        
 };
 

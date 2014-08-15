@@ -49,5 +49,5 @@ struct edge_type{
         iarc >> p >> w >> i >> s;
     }
 };
-
-typedef graphlab::distributed_graph<graphlab::empty, edge_type> graph_type;
+typedef graphlab::empty vertex_type;
+typedef graphlab::distributed_graph<vertex_type, edge_type> graph_type;

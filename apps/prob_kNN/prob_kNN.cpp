@@ -117,7 +117,7 @@ bool line_parser(graph_type& graph, const std::string& filename,
     std::stringstream strm(textline);
     vid_t vid, other_vid;
     edge_type edata;
-    strm >> vid >> other_vid >> edata.p >> edata.w;
+    strm >> vid >> other_vid >> edata.w >> edata.p;
 
     return true;
 }
@@ -131,13 +131,17 @@ public:
     void init(icontext_type & context, const vertex_type & vertex, const message_type & msg) {
         sp = msg.s;
         iter = msg.i;
+        samplings[iter].visited.insert(vertex.id());
     }
 
     gather_type gather(icontext_type& context, const vertex_type& vertex, edge_type& edge) const { 
         gather_type* tmp = new gather_type();
         float rand_val = rand() / (float)RAND_MAX;       
-        if(rand_val < edge.data().p) {
-            tmp->push_back(vertex_sp(edge.source().id(), sp + edge.data().w));
+        if(rand_val < edge.data().p && samplings[iter].visited.find(vertex.id()) == samplings[iter].visited.end()) {
+        /* random value satisfies and is not already visited */
+            vertex_sp v = vertex_sp(edge.source().id(), sp + edge.data().w);
+            tmp->push_back(v);
+            samplings[iter].queue.insert(v);
         }
 
         return *tmp;
@@ -158,10 +162,6 @@ public:
             tmp.sum = sp;
             tmp.count = 1;
             vertex_log.insert(tmp);
-        }
-
-        for(gather_type::size_type i = 0; i < total.size(); i++) {
-            samplings[iter].queue.insert(total[i]);
         }
     }
 
@@ -191,13 +191,20 @@ int main(int argc, char** argv) {
 
     bool converged = false;
     while(!converged) {
-        /* Run one iteration of vertex program for all samplings*/
+        /* Run one iteration of vertex program for all samplings */
         for(sampling_vector::size_type i = 0; i < samplings.size(); i++) {
             if(!samplings[i].queue.empty()) {
                 vid_t next_vid = samplings[i].queue.begin()->id;
+                samplings[i].queue.erase(samplings[i].queue.begin());
                 engine.signal(next_vid, message_type(i, samplings[i].queue.begin()->sp));
             }
         }
+
+        /* TO-DO 
+        * 1) Convergence estimation
+        * 2) Initialize new samples
+        * 3) Aggregating results
+        */
     }
 
     graphlab::mpi_tools::finalize();

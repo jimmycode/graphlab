@@ -1,5 +1,6 @@
 #include <graphlab.hpp>
 #include <string>
+#include <stdlib.h>
 #include "prob_kNN.h"
 
 /* Input parameter: source vertex id */
@@ -30,8 +31,15 @@ public:
     }
 
     gather_type gather(icontext_type& context, const vertex_type& vertex, edge_type& edge) const { 
-        
+        gather_type* tmp = new gather_type();
+        float rand_val = rand() / (float)RAND_MAX;       
+        if(rand_val < edge.data().p) {
+            tmp->push_back(edge.source().id());
+        }
+
+        return *tmp;
     }
+
        
 };
 

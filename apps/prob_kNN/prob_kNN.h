@@ -36,8 +36,8 @@ typedef std::vector<sampling> sampling_vector;
 
 /* Edge type and vertex type definition */
 struct edge_type{
-    float p; // probability of existence
-    float w; // weight
+    float p; // probability of existence 
+    float w; // weight 
 
     void save(graphlab::oarchive& oarc) const {
         oarc << p << w;
@@ -58,14 +58,8 @@ struct message_type {
 
 class gather_type : public std::vector<vid_t> {
 public:
-    gather_type & operator+=(const gather_type &rhs){
-        return this->insert(this->end(), rhs.begin(), rhs.end());
+    gather_type & operator+=(const gather_type & rhs) {
+        this->insert(this->end(), rhs.begin(), rhs.end());
+        return *this;
     }
-
-    gather_type & operator+(const gather_type &lhs, const gather_type &rhs){
-        gather_type tmp = new gather_type();
-        tmp.insert(tmp.end(), lhs.begin(), lhs.end());
-        tmp.insert(tmp.end(), rhs.begin(), rhs.end());
-        return tmp;
-    }
-}
+};

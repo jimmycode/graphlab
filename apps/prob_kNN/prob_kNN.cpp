@@ -1,5 +1,6 @@
 #include <graphlab.hpp>
 #include <string>
+#include <iostream>
 #include <stdlib.h>
 #include "prob_kNN.h"
 
@@ -53,15 +54,25 @@ int main(int argc, char** argv) {
     graphlab::mpi_tools::init(argc, argv);
     graphlab::distributed_control dc;
 
-    int nsamp = 0;
+    int k = 1;
+    int nsamp = 200;
     /* Parse input parameters */
     graphlab::command_line_options clopts("Welcome to probabilistic kNN");
     clopts.attach_option("src", src, "source vertex id");
+    clopts.attach_option("k", k, "number of nearest neighbors");
     clopts.attach_option("nsamp", nsamp, "number of samples");
+    clopts.parse(argc, argv);
 
+    bool converged = false;
+    while(!converged) {
+        /* Run one iteration of vertex program for all samplings*/
+        for(sampling_vector::size_type i = 0; i < samplings.size(); i++) {
+            if(!samplings[i].queue.empty()) {
+                
+            }
+        }
+    }
     graph_type graph(dc);
-    graph.load(argv[1], line_parser);
 
-    graph.signal(src)
     graphlab::mpi_tools::finalize();
 }

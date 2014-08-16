@@ -27,3 +27,5 @@ tags
 .ycm_extra_conf*
 
 .DS_Store
+.cproject
+.project

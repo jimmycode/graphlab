@@ -153,20 +153,29 @@ public:
 
 };
 
+void add_samp() {
+    sampling s;
+    s.queue.insert(vertex_sp(src, 0));
+    s.visited.clear();
+    samplings.push_back(s);
+}
+
 int main(int argc, char** argv) {
     graphlab::mpi_tools::init(argc, argv);
     graphlab::distributed_control dc;
 
     std::string filename;
     int k = 1;
-    int nsamp = 200;
+    uint nsamp = 200;
     std::string exec_type = "synchronous";
+    int window_size= 10;
     /* Parse input parameters */
     graphlab::command_line_options clopts("Welcome to probabilistic kNN");
     clopts.attach_option("file", filename, "The input filename (required)");
     clopts.attach_option("src", src, "source vertex id");
     clopts.attach_option("k", k, "number of nearest neighbors");
     clopts.attach_option("nsamp", nsamp, "number of samples");
+    clopts.attach_option("window", window_size, "window size");
     clopts.attach_option("engine", exec_type, "The engine type synchronous or asynchronous");
     clopts.parse(argc, argv);
 
@@ -175,14 +184,17 @@ int main(int argc, char** argv) {
     graph.finalize();
     graphlab::omni_engine<kNN_program> engine(dc, graph, exec_type, clopts);
 
-    bool converged = false;
-    while(!converged) {
+    bool finished = false;
+    add_samp();
+    while(!finished) {
+        int window_count = 0;
         /* Run one iteration of vertex program for all samplings */
         for(sampling_vector::size_type i = 0; i < samplings.size(); i++) {
             if(!samplings[i].queue.empty()) {
                 vid_t next_vid = samplings[i].queue.begin()->id;
                 samplings[i].queue.erase(samplings[i].queue.begin());
                 engine.signal(next_vid, message_type(i, samplings[i].queue.begin()->sp));
+                window_count++;
             }
         }
 
@@ -191,7 +203,19 @@ int main(int argc, char** argv) {
         * 2) Initialize new samples
         * 3) Aggregating results
         */
+        if(window_count < window_size && samplings.size() < nsamp) {
+            add_samp();
+        }
+        else if(samplings.size() >= nsamp && window_count == 0) {
+            finished = true;
+        }
+        
+        for(vertex_set::iterator it = vertex_log.begin(); it != vertex_log.end(); it++) {
+            dc.cout() << "(" << it->id << ", " << it->sum / it->count << ") ";
+        }
+        dc.cout() << "\n";
     }
 
     graphlab::mpi_tools::finalize();
+    return 0;
 }

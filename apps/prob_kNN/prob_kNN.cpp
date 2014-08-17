@@ -12,15 +12,14 @@ struct vertex_value {
     vid_t id;
     float sum; // sum of all shortest path length
     int count; // counter of shortest path reached
-
-    bool operator== (const vertex_value& v) {
-        return v.id == this->id;
-    }
 };
 
 struct compare_vertex_value {
     bool operator () (const vertex_value& v1, const vertex_value& v2) {
-        return v1.sum / v1.count > v2.sum / v2.count;
+        if(v1.id != v2.id)
+            return v1.sum / v1.count > v2.sum / v2.count;
+        else
+            return false;
     }
 };
 typedef std::set<vertex_value, compare_vertex_value> vertex_set;
@@ -35,7 +34,10 @@ struct vertex_sp {
 struct sampling {
     struct compare_sp {
         bool operator () (const vertex_sp& v1, const vertex_sp& v2) {
-            return v1.sp > v2.sp;
+            if(v1.id != v2.id)
+                return v1.sp > v2.sp;
+            else
+                return false;
         }
     };
     
@@ -86,24 +88,7 @@ public:
 
 };
 
-class gather_type : public std::vector<vertex_sp> {
-public:
-    gather_type & operator+=(const gather_type & rhs) {
-        this->insert(this->end(), rhs.begin(), rhs.end());
-        return *this;
-    }
-
-    void save(graphlab::oarchive& oarc) const {
-        for(uint i = 0; i < this->size(); i++)
-            oarc << this->at(i).id << this->at(i).sp;
-    }
-
-    void load(graphlab::iarchive& iarc) {
-         for(uint i = 0; i < this->size(); i++)
-            iarc >> this->at(i).id >> this->at(i).sp;
-    }
-
-};
+typedef graphlab::empty gather_type;
 
 /* Input parameter: source vertex id */
 vid_t src;
@@ -135,16 +120,17 @@ public:
     }
 
     gather_type gather(icontext_type& context, const vertex_type& vertex, edge_type& edge) const { 
-        gather_type* tmp = new gather_type();
         float rand_val = rand() / (float)RAND_MAX;       
         if(rand_val < edge.data().p && samplings[iter].visited.find(vertex.id()) == samplings[iter].visited.end()) {
         /* random value satisfies and is not already visited */
             vertex_sp v = vertex_sp(edge.source().id(), sp + edge.data().w);
-            tmp->push_back(v);
-            samplings[iter].queue.insert(v);
+            std::set<vertex_sp, sampling::compare_sp> cur_queue = samplings[iter].queue;
+            std::set<vertex_sp, sampling::compare_sp>::iterator it = cur_queue.find(v);
+            if(it == cur_queue.end() || v.sp < it->sp)
+                cur_queue.insert(v);
         }
 
-        return *tmp;
+        return gather_type();
     }
 
     void apply(icontext_type& context, vertex_type& vertex, const gather_type & total) {

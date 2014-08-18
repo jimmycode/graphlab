@@ -2,6 +2,7 @@
 #include <string>
 #include <iostream>
 #include <stdlib.h>
+#include <time.h>
 #include <set>
 #include <vector>
 
@@ -45,6 +46,7 @@ struct sampling {
     std::set<vid_t> visited;
 };
 typedef std::vector<sampling> sampling_vector;
+typedef std::set<vertex_sp, sampling::compare_sp> sampling_priq; // priority queue
 
 /* Edge type and vertex type definition */
 struct edge_type{
@@ -103,6 +105,10 @@ bool line_parser(graph_type& graph, const std::string& filename,
     vid_t vid, other_vid;
     edge_type edata;
     strm >> vid >> other_vid >> edata.w >> edata.p;
+    
+    graph.add_vertex(vid);
+    graph.add_vertex(other_vid);
+    graph.add_edge(vid, other_vid, edata);
 
     return true;
 }
@@ -116,18 +122,21 @@ public:
     void init(icontext_type & context, const vertex_type & vertex, const message_type & msg) {
         sp = msg.s;
         iter = msg.i;
-        samplings[iter].visited.insert(vertex.id());
+    }
+
+    edge_dir_type gather_edges(icontext_type & context, const vertex_type & vertex) const {
+        return graphlab::ALL_EDGES;
     }
 
     gather_type gather(icontext_type& context, const vertex_type& vertex, edge_type& edge) const { 
+        srand(time(NULL));
         float rand_val = rand() / (float)RAND_MAX;       
-        if(rand_val < edge.data().p && samplings[iter].visited.find(vertex.id()) == samplings[iter].visited.end()) {
+        if(rand_val < edge.data().p && samplings[iter].visited.find(edge.source().id()) == samplings[iter].visited.end()) {
         /* random value satisfies and is not already visited */
             vertex_sp v = vertex_sp(edge.source().id(), sp + edge.data().w);
-            std::set<vertex_sp, sampling::compare_sp> cur_queue = samplings[iter].queue;
-            std::set<vertex_sp, sampling::compare_sp>::iterator it = cur_queue.find(v);
-            if(it == cur_queue.end() || v.sp < it->sp)
-                cur_queue.insert(v);
+            sampling_priq::iterator it = samplings[iter].queue.find(v);
+            if(it == samplings[iter].queue.end() || v.sp < it->sp)
+                samplings[iter].queue.insert(v);
         }
 
         return gather_type();
@@ -150,6 +159,8 @@ public:
             vertex_log.insert(tmp);
         }
     }
+
+    void scatter(icontext_type & context, const vertex_type & vertex, edge_type & edge)const { }
 
 };
 
@@ -191,12 +202,15 @@ int main(int argc, char** argv) {
         /* Run one iteration of vertex program for all samplings */
         for(sampling_vector::size_type i = 0; i < samplings.size(); i++) {
             if(!samplings[i].queue.empty()) {
-                vid_t next_vid = samplings[i].queue.begin()->id;
-                samplings[i].queue.erase(samplings[i].queue.begin());
-                engine.signal(next_vid, message_type(i, samplings[i].queue.begin()->sp));
+                sampling_priq::iterator it = samplings[i].queue.begin();
+                vid_t next_vid = it->id;
+                engine.signal(next_vid, message_type(i, it->sp));
+                samplings[i].visited.insert(next_vid);
+                samplings[i].queue.erase(it);
                 window_count++;
             }
         }
+        engine.start();
 
         /* TO-DO 
         * 1) Convergence estimation

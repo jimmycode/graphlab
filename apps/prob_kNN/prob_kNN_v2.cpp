@@ -8,82 +8,39 @@
 #include <vector>
 
 typedef graphlab::vertex_id_type vid_t; // Vertex id
+typedef graphlab::empty vertex_type;
 
-/* Vertex set records the expected reliability of each vertex */
-struct vertex_value {
-    vid_t id;
-    float sum; // sum of all shortest path length
-    int count; // counter of shortest path reached
-};
-
-struct compare_vertex_value {
-    bool operator () (const vertex_value& v1, const vertex_value& v2) {
-        return v1.sum / v1.count > v2.sum / v2.count;
-    }
-};
-typedef std::set<vertex_value, compare_vertex_value> vertex_set;
-
-struct vertex_sp {
-    vid_t id;
-    float sp; // Shortest path in current sampling
-    vertex_sp(vid_t a, float b){id = a; sp = b;}
-};
-
-/* Sampling vector stores Dijkstra samplings */
-struct sampling {
-    struct compare_sp {
-        bool operator () (const vertex_sp& v1, const vertex_sp& v2) {
-            return v1.sp > v2.sp;
-        }
-    };
+class sample {
+public:
+    std::set<pair<float, int> > prior_queue;
+    std::set<int> visited_ver;
+    std::map<pair<int, float> > short_path;
     
-    std::set<vertex_sp, compare_sp> queue;
-    std::map<vid_t, float> sp_map;
-    std::set<vid_t> visited;
+    static std::map<int, pair<float, int> > result;
+
+private:
 };
-typedef std::vector<sampling> sampling_vector;
-typedef std::set<vertex_sp, sampling::compare_sp> sampling_priq; // priority queue
 
 /* Edge type and vertex type definition */
-struct edge_type{
+class edge_type{
+public:
     float p; // probability of existence 
     float w; // weight 
-
-    void save(graphlab::oarchive& oarc) const {
-        oarc << p << w;
-    }
-
-    void load(graphlab::iarchive& iarc) {
-        iarc >> p >> w;
-    }
+    void save(graphlab::oarchive& oarc) const { oarc << p << w; }
+    void load(graphlab::iarchive& iarc) { iarc >> p >> w; }
 };
-typedef graphlab::empty vertex_type;
 typedef graphlab::distributed_graph<vertex_type, edge_type> graph_type;
 
 /* Message tyep */
 class message_type {
 public:
-    int i; // index of iteration
-    float s; // shortest path from source to endpoint, including the weight of current edge
+    std::vector<int> i; // index of iteration
+    message_type(int iter) { i = iter; }
+    message_type & operator+=(const message_type & rhs) { return *this; }
 
-    message_type(){}
-    message_type(int iter, float sp) {
-        i = iter;
-        s = sp;
-    }
+    void save(graphlab::oarchive& oarc) const { oarc << i << s; }
 
-    message_type & operator+=(const message_type & rhs) {
-        return *this;
-    }
-
-    void save(graphlab::oarchive& oarc) const {
-        oarc << i << s;
-    }
-
-    void load(graphlab::iarchive& iarc) {
-        iarc >> i >> s;
-    }
-
+    void load(graphlab::iarchive& iarc) { iarc >> i >> s; }
 };
 
 typedef graphlab::empty gather_type;

@@ -9,12 +9,9 @@ class sample {
 public:
     set<pair<float, int> > prior_queue;
     set<int> visited_ver;
-    map<pair<int, float> > short_path;
+    map<int, float> short_path;
     
     static map<int, pair<float, int> > result;
-
-private:
-    
 };
 
 /* load graph from file */

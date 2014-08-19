@@ -6,94 +6,59 @@
 #include <set>
 #include <map>
 #include <vector>
+using namespace std;
 
 typedef graphlab::vertex_id_type vid_t; // Vertex id
-
-/* Vertex set records the expected reliability of each vertex */
-struct vertex_value {
-    vid_t id;
-    float sum; // sum of all shortest path length
-    int count; // counter of shortest path reached
-};
-
-struct compare_vertex_value {
-    bool operator () (const vertex_value& v1, const vertex_value& v2) {
-        return v1.sum / v1.count > v2.sum / v2.count;
-    }
-};
-typedef std::set<vertex_value, compare_vertex_value> vertex_set;
-
-struct vertex_sp {
-    vid_t id;
-    float sp; // Shortest path in current sampling
-    vertex_sp(vid_t a, float b){id = a; sp = b;}
-};
-
-/* Sampling vector stores Dijkstra samplings */
-struct sampling {
-    struct compare_sp {
-        bool operator () (const vertex_sp& v1, const vertex_sp& v2) {
-            return v1.sp > v2.sp;
-        }
-    };
-    
-    std::set<vertex_sp, compare_sp> queue;
-    std::map<vid_t, float> sp_map;
-    std::set<vid_t> visited;
-};
-typedef std::vector<sampling> sampling_vector;
-typedef std::set<vertex_sp, sampling::compare_sp> sampling_priq; // priority queue
+typedef graphlab::empty vertex_type;
 
 /* Edge type and vertex type definition */
-struct edge_type{
-    float p; // probability of existence 
+class edge_type{
+public:
     float w; // weight 
-
-    void save(graphlab::oarchive& oarc) const {
-        oarc << p << w;
-    }
-
-    void load(graphlab::iarchive& iarc) {
-        iarc >> p >> w;
-    }
+    float p; // probability of existence 
+    void save(graphlab::oarchive& oarc) const { oarc << w << p; }
+    void load(graphlab::iarchive& iarc) { iarc >> w >> p; }
 };
-typedef graphlab::empty vertex_type;
 typedef graphlab::distributed_graph<vertex_type, edge_type> graph_type;
 
 /* Message tyep */
 class message_type {
 public:
-    int i; // index of iteration
-    float s; // shortest path from source to endpoint, including the weight of current edge
-
+    int i; // index of sampling
     message_type(){}
-    message_type(int iter, float sp) {
-        i = iter;
-        s = sp;
-    }
-
-    message_type & operator+=(const message_type & rhs) {
+    message_type(int iter) { i = iter; }
+    message_type & operator+=(const message_type & rhs) { 
         return *this;
     }
-
-    void save(graphlab::oarchive& oarc) const {
-        oarc << i << s;
-    }
-
-    void load(graphlab::iarchive& iarc) {
-        iarc >> i >> s;
-    }
-
+    void save(graphlab::oarchive& oarc) const { oarc << i; } //todo:iterator
+    void load(graphlab::iarchive& iarc) { iarc >> i; }
 };
-
 typedef graphlab::empty gather_type;
+
+
+class sampling {
+public:
+    std::set<pair<float, vid_t> > prior_queue; // set are ordered in non-decreasing order
+    std::set<vid_t> visited_ver;
+    std::map<vid_t, float> short_path;
+    
+    static std::map<vid_t, pair<float, int> > result;
+};
+typedef pair<float, vid_t> vsp;
+std::map<vid_t, pair<float, int> > sampling::result;
 
 /* Input parameter: source vertex id */
 vid_t src;
-/* Log of visited vertices */
-vertex_set vertex_log;
-/* Vector of samplings */
-sampling_vector samplings;
+
+std::vector<sampling> samplings;
+
+void add_samp() {
+    sampling s;
+    s.prior_queue.insert(vsp(0, src));
+    s.short_path[src] = 0;
+    s.visited_ver.clear();
+    samplings.push_back(s);
+}
 
 bool line_parser(graph_type& graph, const std::string& filename, 
                 const std::string& textline) {
@@ -102,22 +67,32 @@ bool line_parser(graph_type& graph, const std::string& filename,
     edge_type edata;
     strm >> vid >> other_vid >> edata.w >> edata.p;
     
-    graph.add_vertex(vid);
+    graph.add_vertex(vid); // Don't forget to add vertex
     graph.add_vertex(other_vid);
     graph.add_edge(vid, other_vid, edata);
 
     return true;
 }
 
+
 class kNN_program : 
     public graphlab::ivertex_program<graph_type, gather_type, message_type>,
     public graphlab::IS_POD_TYPE {
 private:
-    float sp; int iter;
+    sampling* p_cur_samp;
+    vid_t id;
+    float sp;
+
+    inline vid_t get_other_vertex(const edge_type& edge, const vertex_type& vertex) const {
+           return vertex.id() == edge.source().id()? edge.target().id() : edge.source().id();
+    }
 public:
     void init(icontext_type & context, const vertex_type & vertex, const message_type & msg) {
-        sp = msg.s;
-        iter = msg.i;
+        p_cur_samp = &samplings[msg.i];
+        id = vertex.id();
+        sp = p_cur_samp->short_path[id];
+        p_cur_samp->visited_ver.insert(id);
+        p_cur_samp->prior_queue.erase(p_cur_samp->prior_queue.begin());
     }
 
     edge_dir_type gather_edges(icontext_type & context, const vertex_type & vertex) const {
@@ -125,65 +100,56 @@ public:
     }
 
     gather_type gather(icontext_type& context, const vertex_type& vertex, edge_type& edge) const { 
-        srand(time(NULL));
-        float rand_val = rand() / (float)RAND_MAX;       
-        if(rand_val < edge.data().p && samplings[iter].visited.find(edge.source().id()) == samplings[iter].visited.end()) {
-        /* random value satisfies and is not already visited */
-            vid_t other_vertex_id = get_other_vertex(edge, vertex);
-            vertex_sp v = vertex_sp(other_vertex_id, sp_map[other_vertex_id]);
-            sampling_priq::iterator it = samplings[iter].queue.find(v);
-            if(it == samplings[iter].queue.end() || v.sp < it->sp)
-                samplings[iter].queue.insert(v);
+        float rand_val = rand() / (float)RAND_MAX; // Generate a randome value between 0 and 1
+
+        if(rand_val < edge.data().p) {
+            vid_t other_vid = get_other_vertex(edge, vertex);
+            float other_sp = sp + edge.data().w;
+            if(p_cur_samp->visited_ver.find(other_vid) == p_cur_samp->visited_ver.end()) {
+                // vertex other_vid not visited
+                if(p_cur_samp->short_path.find(other_vid) == p_cur_samp->short_path.end()) { // not in priority queue and short_path
+                    p_cur_samp->prior_queue.insert(vsp(other_sp, other_vid));
+                    p_cur_samp->short_path[other_vid] = other_sp;
+                }
+                else if(other_sp < p_cur_samp->short_path[other_vid]) { // update with minimum shortest path value
+                    p_cur_samp->prior_queue.erase(p_cur_samp->prior_queue.find(vsp(p_cur_samp->short_path[other_vid], other_vid)));
+                    p_cur_samp->prior_queue.insert(vsp(other_sp, other_vid));
+                    p_cur_samp->short_path[other_vid] = other_sp;
+                }
+            }
         }
 
         return gather_type();
     }
 
     void apply(icontext_type& context, vertex_type& vertex, const gather_type & total) {
-        vertex_value tmp;
-        tmp.id = vertex.id();
-        vertex_set::iterator it = vertex_log.find(tmp);
-
-        if(it != vertex_log.end()) {
-            tmp.sum = it->sum + sp;   
-            tmp.count = it->count + 1;
-            vertex_log.erase(it);
-            vertex_log.insert(tmp);
+        if(sampling::result.find(vertex.id()) != sampling::result.end()) {
+            pair<float, int> tmp = sampling::result[vertex.id()];
+            tmp.first += sp;   
+            tmp.second++;
+            sampling::result[vertex.id()] = tmp;
         }
         else {
-            tmp.sum = sp;
-            tmp.count = 1;
-            vertex_log.insert(tmp);
+            sampling::result[vertex.id()] = pair<float, int>(sp, 1);
         }
     }
 
     void scatter(icontext_type & context, const vertex_type & vertex, edge_type & edge)const { }
 
-private:
-    inline graph_type::vertex_type
-    get_other_vertex(const graph_type::edge_type& edge,
-                     const graph_type::vertex_type& vertex) {
-                       return vertex.id() == edge.source().id()? edge.target() : edge.source();
-                       }
-
 };
 
-void add_samp() {
-    sampling s;
-    s.queue.insert(vertex_sp(src, 0));
-    s.visited.clear();
-    samplings.push_back(s);
-}
 
 int main(int argc, char** argv) {
     graphlab::mpi_tools::init(argc, argv);
     graphlab::distributed_control dc;
 
     std::string filename;
-    int k = 1;
+    uint k = 1;
     uint nsamp = 200;
     std::string exec_type = "synchronous";
-    int window_size= 10;
+    int window_size= nsamp;
+    float dist = 0;
+    float dist_det = 0.4;
     /* Parse input parameters */
     graphlab::command_line_options clopts("Welcome to probabilistic kNN");
     clopts.attach_option("file", filename, "The input filename (required)");
@@ -191,6 +157,7 @@ int main(int argc, char** argv) {
     clopts.attach_option("k", k, "number of nearest neighbors");
     clopts.attach_option("nsamp", nsamp, "number of samples");
     clopts.attach_option("window", window_size, "window size");
+    clopts.attach_option("dist_det", dist_det, "distance increment");
     clopts.attach_option("engine", exec_type, "The engine type synchronous or asynchronous");
     clopts.parse(argc, argv);
 
@@ -198,19 +165,18 @@ int main(int argc, char** argv) {
     graph.load(filename, line_parser);
     graph.finalize();
     graphlab::omni_engine<kNN_program> engine(dc, graph, exec_type, clopts);
+    srand(time(NULL));
 
     bool finished = false;
     add_samp();
     while(!finished) {
         int window_count = 0;
+        dist += dist_det;
         /* Run one iteration of vertex program for all samplings */
-        for(sampling_vector::size_type i = 0; i < samplings.size(); i++) {
-            if(!samplings[i].queue.empty()) {
-                sampling_priq::iterator it = samplings[i].queue.begin();
-                vid_t next_vid = it->id;
-                engine.signal(next_vid, message_type(i, it->sp));
-                samplings[i].visited.insert(next_vid);
-                samplings[i].queue.erase(it);
+        for(std::vector<sampling>::size_type i = 0; i < samplings.size(); i++) {
+            if(!samplings[i].prior_queue.empty() && samplings[i].prior_queue.begin()->first < dist) {
+                vid_t next_vid = samplings[i].prior_queue.begin()->second;
+                engine.signal(next_vid, message_type(i));
                 window_count++;
             }
         }
@@ -221,18 +187,19 @@ int main(int argc, char** argv) {
         * 2) Initialize new samples
         * 3) Aggregating results
         */
-        if(window_count < window_size && samplings.size() < nsamp) {
-            add_samp();
-        }
-        else if(samplings.size() >= nsamp && window_count == 0) {
+        if(samplings.size() >= k + 1) {
             finished = true;
         }
-        
-        for(vertex_set::iterator it = vertex_log.begin(); it != vertex_log.end(); it++) {
-            dc.cout() << "(" << it->id << ", " << it->sum / it->count << ") ";
+        else if(window_count < window_size && samplings.size() < nsamp) {
+            add_samp();
         }
-        dc.cout() << "\n";
     }
+
+    for(std::map<vid_t, pair<float, int> >::iterator it = sampling::result.begin(); it != sampling::result.end(); it++) {
+        if(it->first != src)
+            dc.cout() << "(" << it->first << ", " << it->second.first/ it->second.second << ") ";
+    }
+    dc.cout() << "\n";
 
     graphlab::mpi_tools::finalize();
     return 0;

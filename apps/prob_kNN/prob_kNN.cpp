@@ -93,7 +93,7 @@ private:
 
     inline vid_t get_other_vid(const edge_type& edge, const vertex_type& vertex) const {
         if(directed)
-            return edge.target.id();
+            return edge.target().id();
         else
             return vertex.id() == edge.source().id()? edge.target().id() : edge.source().id();
     }

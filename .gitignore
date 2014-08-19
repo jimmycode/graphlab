@@ -3,6 +3,7 @@ syntax: glob
 
 *~
 debug/*
+!debug/apps/prob_kNN
 release/*
 profile/*
 dist/graphlabapi*

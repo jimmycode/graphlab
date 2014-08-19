@@ -58,6 +58,7 @@ std::map<vid_t, pair<float, int> > sampling::result;
 vid_t src;
 bool directed;
 std::vector<sampling> samplings;
+uint nsamp = 200;
 
 void add_samp() {
     sampling s;
@@ -167,6 +168,12 @@ public:
 
 };
 
+void init() {
+    samplings.clear();
+    for(uint i = 0; i < nsamp; i++) {
+        add_samp();
+    }
+}
 
 int main(int argc, char** argv) {
     graphlab::mpi_tools::init(argc, argv);
@@ -174,7 +181,6 @@ int main(int argc, char** argv) {
 
     std::string filename;
     uint k = 1;
-    uint nsamp = 200;
     directed = false;
     std::string exec_type = "synchronous";
    // int window_size= nsamp;
@@ -183,9 +189,6 @@ int main(int argc, char** argv) {
     /* Parse input parameters */
     graphlab::command_line_options clopts("Welcome to probabilistic kNN");
     clopts.attach_option("file", filename, "The input filename (required)");
-    clopts.attach_option("src", src, "source vertex id");
-    clopts.attach_option("k", k, "number of nearest neighbors");
-    clopts.attach_option("nsamp", nsamp, "number of samples");
     clopts.attach_option("dir", directed, "directed (1) or undirected (0) graph");
     // clopts.attach_option("window", window_size, "window size");
     clopts.attach_option("dist_det", dist_det, "distance increment");
@@ -200,49 +203,49 @@ int main(int argc, char** argv) {
     graph.finalize();
     graphlab::omni_engine<kNN_program> engine(dc, graph, exec_type, clopts);
     
-    
-    srand(time(NULL));
-    graphlab::timer timer;
-    timer.start();
+    while(cin >> src >> k >> nsamp){
+        init();
+        srand(time(NULL));
+        graphlab::timer timer;
+        timer.start();
 
-    for(uint i = 0; i < nsamp; i++) {
-        add_samp();
-    }
+        
 
-    bool finished = false;
-    while(!finished) {
-        //int window_count = 0;
-        dist += dist_det;
-        /* Run one iteration of vertex program for all samplings */
-        for(std::vector<sampling>::size_type i = 0; i < samplings.size(); i++) {
-            if(!samplings[i].prior_queue.empty() && samplings[i].prior_queue.begin()->first < dist) {
-                vid_t next_vid = samplings[i].prior_queue.begin()->second;
-                engine.signal(next_vid, message_type(i));
-                //window_count++;
+        bool finished = false;
+        while(!finished) {
+            //int window_count = 0;
+            dist += dist_det;
+            /* Run one iteration of vertex program for all samplings */
+            for(std::vector<sampling>::size_type i = 0; i < samplings.size(); i++) {
+                if(!samplings[i].prior_queue.empty() && samplings[i].prior_queue.begin()->first < dist) {
+                    vid_t next_vid = samplings[i].prior_queue.begin()->second;
+                    engine.signal(next_vid, message_type(i));
+                    //window_count++;
+                }
             }
+            engine.start();
+
+            /* TO-DO 
+            * 1) Convergence estimation
+            * 2) Initialize new samples
+            * 3) Aggregating results
+            */
+            if(sampling::result.size() >= k + 1) {
+                finished = true;
+            }
+            //else if(window_count < window_size && samplings.size() < nsamp) {
+            //    add_samp();
+            //}
         }
-        engine.start();
 
-        /* TO-DO 
-        * 1) Convergence estimation
-        * 2) Initialize new samples
-        * 3) Aggregating results
-        */
-        if(sampling::result.size() >= k + 1) {
-            finished = true;
+        for(std::map<vid_t, pair<float, int> >::iterator it = sampling::result.begin(); it != sampling::result.end(); it++) {
+            if(it->first != src)
+                dc.cout() << "(" << it->first << ", " << it->second.first / (float)it->second.second << ") ";
         }
-        //else if(window_count < window_size && samplings.size() < nsamp) {
-        //    add_samp();
-        //}
-    }
+        dc.cout() << "\n";
 
-    for(std::map<vid_t, pair<float, int> >::iterator it = sampling::result.begin(); it != sampling::result.end(); it++) {
-        if(it->first != src)
-            dc.cout() << "(" << it->first << ", " << it->second.first / (float)it->second.second << ") ";
+        dc.cout() << "Time used: " << timer.current_time() << "\n";
     }
-    dc.cout() << "\n";
-
-    dc.cout() << "Time used: " << timer.current_time() << "\n";
 
     graphlab::mpi_tools::finalize();
     return 0;

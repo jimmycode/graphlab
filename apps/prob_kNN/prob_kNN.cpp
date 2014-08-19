@@ -200,6 +200,9 @@ int main(int argc, char** argv) {
     graph.finalize();
     graphlab::omni_engine<kNN_program> engine(dc, graph, exec_type, clopts);
     srand(time(NULL));
+    
+    graphlab::timer timer;
+    timer.start();
 
     bool finished = false;
 
@@ -238,6 +241,8 @@ int main(int argc, char** argv) {
             dc.cout() << "(" << it->first << ", " << it->second.first / (float)it->second.second << ") ";
     }
     dc.cout() << "\n";
+
+    dc.cout() << timer.current_time() << "\n";
 
     graphlab::mpi_tools::finalize();
     return 0;

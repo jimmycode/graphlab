@@ -1,0 +1,20 @@
+~/graphlab/debug/apps/prob_kNN/prob_kNN_mi --file ~/datasets/roadNet/roadNet-PA.txt.prob --dist_det 0.3 --engine "synchronous" --ncpus 8 <<EOF
+29 20 200
+100 20 200
+227 20 200
+393 20 200
+4975 20 200
+388570 20 200
+29 20 2000
+100 20 2000
+227 20 2000
+393 20 2000
+4975 20 2000
+388570 20 2000
+29 20 20000
+100 20 20000
+227 20 20000
+393 20 20000
+4975 20 20000
+388570 20 20000
+EOF

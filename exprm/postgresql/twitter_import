@@ -1,0 +1,1 @@
+copy twitter (followee,follower) from '/home/jimmy/datasets/twitter_rv/twitter_rv.net';

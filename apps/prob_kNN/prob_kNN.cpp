@@ -56,7 +56,7 @@ std::map<vid_t, pair<float, int> > sampling::result;
 
 /* Input parameter: source vertex id */
 vid_t src;
-
+bool directed;
 std::vector<sampling> samplings;
 
 void add_samp() {
@@ -91,8 +91,11 @@ private:
     vid_t id;
     //float sp;
 
-    inline vid_t get_other_vertex(const edge_type& edge, const vertex_type& vertex) const {
-           return vertex.id() == edge.source().id()? edge.target().id() : edge.source().id();
+    inline vid_t get_other_vid(const edge_type& edge, const vertex_type& vertex) const {
+        if(directed)
+            return edge.target.id();
+        else
+            return vertex.id() == edge.source().id()? edge.target().id() : edge.source().id();
     }
 public:
     void init(icontext_type & context, const vertex_type & vertex, const message_type & msg) {
@@ -108,7 +111,10 @@ public:
     }
 
     edge_dir_type gather_edges(icontext_type & context, const vertex_type & vertex) const {
-        return graphlab::ALL_EDGES;
+        if(directed)
+            return graphlab::OUT_EDGES;
+        else
+            return graphlab::ALL_EDGES;
     }
 
     gather_type gather(icontext_type& context, const vertex_type& vertex, edge_type& edge) const { 
@@ -119,7 +125,7 @@ public:
             float rand_val = rand() / (float)RAND_MAX; // Generate a randome value between 0 and 1
 
             if(rand_val < edge.data().p) {
-                vid_t other_vid = get_other_vertex(edge, vertex);
+                vid_t other_vid = get_other_vid(edge, vertex);
                 float other_sp = sp + edge.data().w;
                 if(p_cur_samp->visited_ver.find(other_vid) == p_cur_samp->visited_ver.end()) {
                     // vertex other_vid not visited
@@ -169,6 +175,7 @@ int main(int argc, char** argv) {
     std::string filename;
     uint k = 1;
     uint nsamp = 200;
+    directed = false;
     std::string exec_type = "synchronous";
    // int window_size= nsamp;
     float dist = 0;
@@ -179,6 +186,7 @@ int main(int argc, char** argv) {
     clopts.attach_option("src", src, "source vertex id");
     clopts.attach_option("k", k, "number of nearest neighbors");
     clopts.attach_option("nsamp", nsamp, "number of samples");
+    clopts.attach_option("dir", directed, "directed (1) or undirected (0) graph");
     // clopts.attach_option("window", window_size, "window size");
     clopts.attach_option("dist_det", dist_det, "distance increment");
     clopts.attach_option("engine", exec_type, "The engine type synchronous or asynchronous");

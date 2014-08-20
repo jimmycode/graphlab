@@ -173,6 +173,7 @@ void init() {
     for(uint i = 0; i < nsamp; i++) {
         add_samp();
     }
+    sampling::result.clear();
 }
 
 int main(int argc, char** argv) {

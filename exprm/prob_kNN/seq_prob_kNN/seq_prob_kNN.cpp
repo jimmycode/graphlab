@@ -119,6 +119,10 @@ void kNN() {
 }
 
 void displayResult() {
+    set<v_id>::iterator i;
+    for(i = result.begin(); i != result.end(); i++) {
+        cout << *i << " ";
+    }
 }
 
 int main(int argc, char** argv) {
